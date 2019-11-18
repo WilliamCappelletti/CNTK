@@ -4,6 +4,7 @@
 *.pyc
 
 *.vscode
+data/*
 
 # Jupyter Notebook
 .ipynb_checkpoints
