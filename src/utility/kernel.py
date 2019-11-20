@@ -1,5 +1,8 @@
 import torch
 
 def tangentKernel(network, input):
-    return lambda x: x
+    ker = torch.Tensor()
+    pass
 
+def newPointKernel(x, network, input):
+    pass
