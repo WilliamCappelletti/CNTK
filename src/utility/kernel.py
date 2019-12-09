@@ -8,7 +8,7 @@ class NeuralTangentKernel:
         else:
             self.device = device
         
-        self.net = net.to(device)
+        self.net = net
 
         self.n_samples = X.shape[0]
         self.dim_out = list(net.modules())[-1].out_features
@@ -22,8 +22,9 @@ class NeuralTangentKernel:
                     
     
     def kernel(self):
+        Jac = self.Jac.to(self.device)
         # compute the kernel value
-        return torch.einsum('abp, cdp -> abcd', self.Jac, self.Jac).reshape(self.n_samples*self.dim_out, self.n_samples*self.dim_out)
+        return torch.einsum('abp, cdp -> abcd', Jac, Jac).reshape(self.n_samples*self.dim_out, self.n_samples*self.dim_out)
 
     def compute_jacobians(self, X):
         """Returns the jacobians of the neural network for each parameter and each input.
@@ -39,11 +40,12 @@ class NeuralTangentKernel:
             The jacobian encoded as a tensor of size (n_samples, dim_out, n_param)
         """
         X = X.to(self.device)
+        net = self.net.to(self.device)
 
-        self.net.zero_grad()
-        out = self.net(X)
+        net.zero_grad()
+        out = net(X)
 
-        Jac = torch.zeros(self.n_samples, self.dim_out, self.n_params)
+        Jac = torch.zeros(self.n_samples, self.dim_out, self.n_params)#, device=self.device)
 
         with torch.no_grad():
             for x in range(self.n_samples):
@@ -69,7 +71,7 @@ class NeuralTangentKernel:
         -------
         self
         """
-        self.coefficients = torch.cholesky_solve(target_train, self.kernel().unsqueeze(0).to(self.device))
+        self.coefficients = torch.cholesky_solve(target_train.to(self.device), self.kernel().unsqueeze(0).to(self.device))
         return self
 
     def predict(self, input_test):
@@ -81,7 +83,9 @@ class NeuralTangentKernel:
         """
         n_test = input_test.shape[0]
         Jac_te = self.compute_jacobians(input_test)
+        Jac_tr = self.Jac
 
-        kernel_te = torch.einsum('abp, cdp -> abcd', Jac_te, self.Jac).reshape(n_test * self.dim_out, self.n_samples * self.dim_out)
+        kernel_te = torch.einsum('abp, cdp -> abcd', Jac_te, Jac_tr).reshape(n_test * self.dim_out, self.n_samples * self.dim_out)
         
-        return kernel_te @ self.coefficients
+        output = kernel_te @ self.coefficients.to('cpu')
+        return output.reshape(-1, self.dim_out)
