@@ -1,7 +1,15 @@
 import torch
 from tqdm.autonotebook import tqdm
 
-def train(model, input_train, target_train, criterion, optimizer, nb_epochs=1000, batch_size=None, device=None):
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+sns.set()
+
+def train(model, input_train, target_train, criterion, optimizer, nb_epochs=1000, batch_size=None, device=None, **kwargs):
+
+    plot_evolution = kwargs.get('plot_evolution', None)
+    score_evolution = []
 
     if batch_size is None:
         batch_size = input_train.shape[0]
@@ -24,5 +32,19 @@ def train(model, input_train, target_train, criterion, optimizer, nb_epochs=1000
             loss = criterion(output, targets)
             loss.backward()
             optimizer.step()
+
+        if plot_evolution:
+            with torch.no_grad():
+                scorer = kwargs.get('score_evolution', criterion)
+                score_evolution.append(scorer(output, targets))
     
+    if plot_evolution:
+        fig, ax = plt.subplots(figsize=(8,5), dpi=120)
+        ax.plot(list(range(nb_epochs)), score_evolution)
+        ax.set(title='Score evolution during training',
+               xlabel='nb of epochs',
+               ylim=(0,3.4))
+        plt.tight_layout()
+        plt.savefig(plot_evolution, bbox='tight')
+
     return model

@@ -17,8 +17,7 @@ def print_score(model, criterion, input_train, target_train, input_test, target_
     input_test, input_train = input_test.to(device), input_train.to(device)
     target_test, target_train = target_test.to(device), target_train.to(device)
 
-    with torch.no_grad():
-        this_CELoss_tr = criterion(model(input_train), target_train).item()
-        this_CELoss_te = criterion(model(input_test), target_test).item()
-        print('{} on TRAIN :\t'.format(criterion), this_CELoss_tr,'\n\
+    this_CELoss_tr = criterion(model(input_train), target_train).item()
+    this_CELoss_te = criterion(model(input_test), target_test).item()
+    print('{} on TRAIN :\t'.format(criterion), this_CELoss_tr,'\n\
 {} on TEST :\t'.format(criterion), this_CELoss_te)
