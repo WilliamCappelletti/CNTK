@@ -47,4 +47,7 @@ def train(model, input_train, target_train, criterion, optimizer, nb_epochs=1000
         plt.tight_layout()
         plt.savefig(plot_evolution, bbox='tight')
 
+    model = model.to('cpu')
+    criterion = criterion.to('cpu')
+    input_train, target_train = input_train.to('cpu'), target_train.to('cpu')
     return model

@@ -1,5 +1,6 @@
 import torch
 import time
+from tqdm.auto import tqdm
 
 class NeuralTangentKernel(torch.nn.Module):
     def __init__(self, X, net, device=None, verbose=False):
@@ -14,25 +15,28 @@ class NeuralTangentKernel(torch.nn.Module):
         self.nets = [net]
 
         self.n_samples = X.shape[0]
-        self.dim_out = list(net.modules())[-1].out_features
+
+        with torch.no_grad():
+            self.dim_out = net(X).shape[1]
+        
         self.n_params = sum(par.numel() for par in net.parameters() if par.requires_grad)
 
         start_time = time.time()
 
-        self.Jac = self.compute_jacobians(X)
+        self.Jac = self.compute_jacobians(X, prog_bar=True)
+        if verbose: print("Computed jacobians in {}s".format(time.time() - start_time))
+
         self.kernel = self.train_kernel()
         
         # TODO: choose an std for initialization.
         self.coefficients = torch.nn.Parameter(torch.empty(self.dim_out * self.n_samples).normal_(std=1.))
-
-        if verbose: print("Computed jacobians in {}s".format(time.time() - start_time))
                     
     def train_kernel(self):
         Jac = self.Jac.to(self.device)
         # compute the kernel value
         return torch.einsum('abp, cdp -> abcd', Jac, Jac).reshape(self.n_samples*self.dim_out, self.n_samples*self.dim_out)
 
-    def compute_jacobians(self, X):
+    def compute_jacobians(self, X, prog_bar=False):
         """Returns the jacobians of the neural network for each parameter and each input.
         
         Parameters
@@ -54,11 +58,10 @@ class NeuralTangentKernel(torch.nn.Module):
         Jac = torch.zeros(self.n_samples, self.dim_out, self.n_params)#, device=self.device)
 
         with torch.no_grad():
-            for x in range(self.n_samples):
+            for x in tqdm(range(self.n_samples), desc="Computing Jacobians") if prog_bar else range(self.n_samples):
                 for i in range(self.dim_out):
                     direction = torch.zeros_like(out, dtype=torch.float)
                     direction[x, i] = 1.
-                    # Note, if we manage to flatten in one tensor each dic entry, we can use it a tensor as well.
                     JacList = torch.autograd.grad(out, net.parameters(), direction, retain_graph=True)
                     
                     Jac[x, i] = torch.cat(tuple(map(lambda par: par.reshape(-1) , JacList)))
