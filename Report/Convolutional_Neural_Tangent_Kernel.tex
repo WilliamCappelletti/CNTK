@@ -3,6 +3,8 @@
 \usepackage{graphicx}
 \usepackage{amsfonts}
 \usepackage{amsmath}
+\usepackage{ mathdots }
+
 \usepackage{amsthm}
 \usepackage{enumitem}
 \usepackage[font=small, format=hang]{caption}
@@ -272,34 +274,84 @@
 	where $h^a := f^a(g^j_1, \dots, g^j_k), h^b := f^b(g^{j'}_1, \dots, g^{j'}_k)$ and $z \sim \normdist(\mu^{\mathfrak{c}}, K^{\mathfrak{c}})$.
 	We also make branch 4 cover the case when $g^l := A^k g^a$ or $g^m := A^k g^b$ by ``typecasting'' $g^a$ to an H-var and setting $f^a$ = id (similarly for $g^b$). Note that, $f^a$ will ignore irrelevant components of a, and the expectations only depend on the entries of $\mu^{\mathfrak{c}}$ and $K^{\mathfrak{c}}$ that correspond to already-defined values, so this describes a valid recursion.
 	
+	\begin{figure}[h!]
+	\centering
+	\includegraphics[width=\linewidth]{Figures/NETSOR_master_thm1.png}
+	\caption{Illustration of Theorem \ref{thm:yangMaster}, from \cite{yang2019tensor}. If we suppose that $g^1, \dots, g^M$ are all the G-vars in a CDC (i.e. $g^{\mathfrak{c}} = (g^1, \dots, g^M)$), then, as the dimension $n$ increase, the empirical mean along the coordinates of the G-vars of an $\alpha$-controlled function $\psi$ converges to the expected value.
+		Or, more intuitively, for each $i$, $(g^1_i, \dots, g^M_i) \approx \normdist(\mu, K)$.
+	}
+	\end{figure} 
+	
 	Intuitively, Theorem \ref{thm:yangMaster} states that $g_i^{\mathfrak{c}t} \stackrel{\text{d}}{\approx} \normdist(\mu^\mathfrak{c}, K^\mathfrak{c})$ for large $t$, iid for each $i$.
 	This, jointly with the definitions of \eqref{eq:mean} and \eqref{eq:covariance}, means, roughly speaking, that the G-vars (preactivations, CFR Section \ref{subsec:tensorProg}) created from the same matrix $A^k$ have nonzero correlations, but otherwise are asymptotically independent unless they appear together in a LinComb.
 	
-	\begin{figure}[h]
-		\centering
-		\includegraphics[width=\linewidth]{Figures/NETSOR_master_thm1.png}
-		\caption{Illustration of Theorem \ref{thm:yangMaster}, from \cite{yang2019tensor}. If we suppose that $g^1, \dots, g^M$ are all the G-vars in a CDC (i.e. $g^{\mathfrak{c}} = (g^1, \dots, g^M)$), then, as the dimension $n$ increase, the empirical mean along the coordinates of the G-vars of an $\alpha$-controlled function $\psi$ converges to the expected value.
-			Or, more intuitively, for each $i$, $(g^1_i, \dots, g^M_i) \approx \normdist(\mu, K)$.
-		}
-	\end{figure} 
-    
 	\subsection{Neural Tangent Kernel}\label{subsec:ntk}
 	
 	Has we have seen in Section \ref{subsec:iwl}, each neaural network architecture is equivalent, in the IWL to a Gaussian Process.
 	This implies that we can study the regression we perform with the ANN as a kernel method, once we understand which kernel corresponds to its training.
 	In this section, $\{x^i\}_{i\in [N]} \subset \R^{\text{dim}_\text{in}}$ denote the network inputs, $\theta \in \R^P$ contains all the parameters, distributed at initialization as in Section \ref{subsec:iwl}, and $f(\theta, x)$ is the output of the network, which, for notation simplicity, we suppose unidimensional.
 	
-	In \cite{jacot2018neural}, the authors show that an MLP in the IWL trained using gradient descent evolves, during training time $t$, along the (negative) gradient kernel
+	As in \cite{jacot2018neural} and \cite{arora2019exact}, we consider a training dataset $\{(x^i, y^i)\}_{i=1}^N \subset \R^{d_\text{in}} \times \R$ and we train the neural network by minimizing a convex loss function \[l(\theta) = \sum_{i=1}^N\mathcal{L}(f(\theta, x^i), y^i). \]
+	We update the parameters at step $t$ using gradient descent with an infinitesimally small learning rate $\frac{d\theta(t)}{dt} = - \nabla l(\theta(t))$.
+	With this setup, if we consider $l$ to be the mean squared error, by a simple differentiation \cite[Lemma 3.1]{arora2019exact} we see that the outputs of the network $u(t) = (f(\theta(t), x^i))_{i\in [N]}$ evolve according to 
+	\begin{equation}\label{eq:dynamics}
+		\frac{du(t)}{dt} = -\NTK(f_t) \cdot (u(t) - y),
+	\end{equation}
+	where $\NTK(f_t)$ is the $n \times n$ positive semidefinite matrix given by the \emph{Neural Tangent Kernel}.
 	
-	This process has a kernel and, during training, the gradient follows a direction given by the \emph{Neural Tangent Kernel} (NTK), which is defined as
-	\begin{equation}
-		[\NTK(f)]_{i,j} = \left\langle \frac{\partial f (\theta, x_i)}{\partial \theta}, \frac{\partial f (\theta, x_j)}{\partial \theta} \right\rangle.
+	\definition{
+		With the notation previously introduced, we define the \emph{Neural Tangent Kernel} $\NTK(\cdot, \cdot)$ as the kernel whose values on points $x, x'$ are given by 
+		\begin{equation}\label{eq:ntk}
+			\NTK(x, x') = \left\langle \frac{\partial f (\theta, x)}{\partial \theta}, \frac{\partial f (\theta, x')}{\partial \theta} \right\rangle. 
+		\end{equation}
+		As the values of $\theta$ are randomly initialized, we also define 
+		\begin{equation}\label{eq:ntk_inf}
+		\NTK_\infty(x, x') = \mathbb{E}_\theta [\NTK(x, x')].
+		\end{equation}
+		Finally, for any kernel $K$, we abuse the notation and, when the context make it clear, use $K$, or specifically $NTK$, to define the matrix whose entries $i,j$ are given by $K(x^i,x^j)$.
+	}
+	
+	As we can see, the $\NTK$ depends on the parameters of the network and thus it is random at initialization and varies during training.
+	Nonetheless, in \cite{jacot2018neural}, the authors prove that, if the ANN is an MLP, the $\NTK$ converges in the IWL to $\NTK_\infty$, which is ideed deterministic.
+	Therefore, the dynamic expressed in \eqref{eq:dynamics} is identical to that of \emph{kernel regression} under gradient flow.
+	
+	It turns out that this idea is even more general.
+	In fact, in \cite{jacot2018neural} Jacot et al. prove that the network function evolves along the kernel gradient given by the Neural Tangent Kernel for any convex loss function.
+	We conjecture that this result holds true for any deep learning architecture.
+	
+	\subsection{Kernel Regression}\label{subsec:kernelRegression}
+	
+	Before moving to the experimental part, we remind the rider some concepts about \emph{kernel regression}.
+	Suppose we have a kernel function $K(\cdot, \cdot)$ and a training dataset $\{(x^i, y^i)\}_{i=1}^N \subset \R^{d_\text{in}} \times \R$, kernel regression aims to approximate the underlying function with the linear combination
+	\begin{equation}\label{eq:kernelReg}
+		f(\cdot) = \sum_{i=1}^N \alpha^i K(\cdot, x^i).
 	\end{equation}
 	
+	The coefficients are estimated to minimize the loss function over prediction points
+	\begin{equation*}
+		l(\alpha) = \mathcal{L}(f(x_*), y_*),
+	\end{equation*}
+	and in practice this minimization is carried over the training dataset
+	\begin{equation}\label{eq:kernelCoeff}
+		\widehat{\alpha} = \arg\inf\left\{\sum_{i=1}^N \mathcal{L}\left(\sum_{j=1}^N \alpha_j K(x^i,x^j), y^i\right) : \alpha_1,\dots, \alpha_N \in \R \right\}.
+	\end{equation}
+	
+	\subsection{Multidimensional output}
+	
+	All we stated before about neural networks and kernels generalize immediately to the multi\-dimensional case upon noting that a function $f : \R^{d_\text{in}} \rightarrow \R^{d_\text{out}}$ is equivalent to a function $\tilde{f} : \R^{d_\text{in}} \times [d_\text{out}] \rightarrow \R$ with $\tilde{f}(x, k) = f_k(x)$.
+	This said, we can generalize kernel regression, with each entry of the kernel $K(x, x')$ now being a matrix instead of a scalar and $\alpha$ being a vector, such that the vector-matrix product in \eqref{eq:kernelReg} produces indeed a vector output.
+	In this case, the kernel matrix $K$ is a block matrix, where each block is given by the matrix $K(x^i, x^j)$.
+	
+	For the Neural Tangent Kernel, this means that 
+	\begin{equation}\label{eq:multiNtk}
+	[NTK(x^i,x^j)]_{k, k'} = \left\langle \frac{\partial f_k (\theta, x^i)}{\partial \theta}, \frac{\partial f_{k'} (\theta, x^j)}{\partial \theta} \right\rangle,
+	\end{equation}
+	with $k,k' \in [d_\text{out}]$.
+	An interesting point of the multidimensional approach is that, as we can see in \eqref{eq:multiNtk}, the kernel also encodes information between different output coordinates, i.e. $k \neq k'$.
 	
 %	\section{Asymptotics results}\label{sec:asympthotics}
 	
-	\section{Exact computation}\label{sec:computation}
+	\section{NTK implementation}\label{sec:implementation}
 	
 	\section{Experimental results}\label{sec:experiments}
 	
@@ -379,6 +431,6 @@
 %	\end{proof}
 
 	\newpage
-	\bibliographystyle{apalike}
+	\bibliographystyle{abbrv}
 	\bibliography{References}
 \end{document}
