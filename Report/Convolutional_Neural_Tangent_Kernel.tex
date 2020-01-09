@@ -69,6 +69,7 @@
 
 \DeclareMathOperator{\NTK}{NTK}
 \DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\poly}{poly}
 
 %\newcounter{definitions}
 %\newcounter{thms}
@@ -173,7 +174,7 @@
 	\section{Introduction}\label{sec:Introduction}
 %	the first one being a simple Multi-Layer Perceptron (MLP) and the second one being a Convolutional NN.
 	
-    \section{Neural Networks as Gaussian Processes}\label{sec:Definitions}
+    \section{Neural Networks as Gaussian Processes}\label{sec:nnAsGaussianPr}
 
 	\subsection{Tensor Programs}\label{subsec:tensorProg}
 	
@@ -324,7 +325,7 @@
 	Before moving to the experimental part, we remind the rider some concepts about \emph{kernel regression}.
 	Suppose we have a kernel function $K(\cdot, \cdot)$ and a training dataset $\{(x^i, y^i)\}_{i=1}^N \subset \R^{d_\text{in}} \times \R$, kernel regression aims to approximate the underlying function with the linear combination
 	\begin{equation}\label{eq:kernelReg}
-		f(\cdot) = \sum_{i=1}^N \alpha^i K(\cdot, x^i).
+		f_K(\cdot) = \sum_{i=1}^N \alpha^i K(\cdot, x^i).
 	\end{equation}
 	
 	The coefficients are estimated to minimize the loss function over prediction points
@@ -335,6 +336,15 @@
 	\begin{equation}\label{eq:kernelCoeff}
 		\widehat{\alpha} = \arg\inf\left\{\sum_{i=1}^N \mathcal{L}\left(\sum_{j=1}^N \alpha_j K(x^i,x^j), y^i\right) : \alpha_1,\dots, \alpha_N \in \R \right\}.
 	\end{equation}
+	
+	There is a nontrivial result linking a fully trained wide MLP $f_{nn}$ to the kernel regression predictor $f_{\NTK}$, using the $\NTK_\infty$.
+	If we consider a fresh observation $x^*$ and let $f_{nn} := \lim_{t \rightarrow \infty} f(\theta(t), x^*)$, where $f(\theta(t), \cdot)$ is the MLP output function as in Section \ref{subsec:ntk}, we can prove the following theorem.
+	\begin{theorem}[\cite{arora2019exact}]
+		Suppose an MLP with ReLU activation function and $L$ hidden layers with $m$ nodes, whwre $m \geq \poly(1/\kappa, L, 1/\lambda_0, N, \log(1/\delta))$, $N$ being the size of the training dataset, $1/\kappa = \poly(1/\epsilon, \log(n/\delta))$ and $\lambda_0$ being the smallest eigenvalue of the matrix $NTK_\infty$ over the training data.
+		Then, for any $x^* \in \R^{d_\text{in}}$ with $||x^*|| = 1$, with probability at least $1-\delta$ over the random initialization, we have 
+		\[|f_{nn}(x^*) - f_{\NTK}(x^*)| \leq \epsilon. \]
+	\end{theorem}
+    The main consequence of this theorem is that, if a network is big enough, then we can expect its performace to be similar to that of the NTK regressor, with a non-asymptotic bound.
 	
 	\subsection{Multidimensional output}
 	
@@ -353,10 +363,80 @@
 	
 	\section{NTK implementation}\label{sec:implementation}
 	
-	In order to practically test the theoretical results on different deep learning architectures, we choose to work using the efficient and popular library \emph{Pytorch} \cite{pytorch}, which is highly optimized for tensorial calculus.
+	In order to practically test the theoretical results on different deep learning architectures, we choose to work using the efficient and popular library \verb|Pytorch| \cite{pytorch}, which is highly optimized for tensorial calculus.
+	We gave in \eqref{eq:ntk} an explicit formula to compute the NTK of a given neural network.
+	This formulation is very suitable for the \verb|Autograd| functionality of \verb|Pytorch|.
+	In fact, this module creates a computational graph when an input is passed trough the ANN and it is then possible to quickly compute derivatives with respect to the network parameters.
 	
+	\subsection{NTK for finite networks}\label{subsec:finiteImpl}
+	To get the exact NTK corresponding to a finite network, we choose therefore to compute the full Jacobian \verb|Jac| of the function $f(\theta, (x^1, \dots, x^N))$, where we pass all the input variables in a batch.
+	In this way, we get a tensor of size $N \times d_\text{out} \times P$, where $N$ is the number of datapoints, $d_\text{out}$ is the length of the response vector and $P$ is the number of parameters in the network, i.e. the length of $\theta$.
+	At this point, we can compute the kernel by multiplying the Jacobian by its transpose (as it is a tensor we intend the transpose along the two fist axes, corresponding to the input number and the coordinate of the output layer) and then by adding up the entries over the third ax, namely the one corresponding to parameters.
+	This last step cab be written in one line using Einstein summation convention, and computed efficiently in \verb|Pytorch| with the function \verb|einsum| and then reshaping the matrix:
+	\begin{verbatim}
+	einsum('abp, cdp -> abcd', Jac, Jac).reshape(N * dim_out, N * dim_out)
+	\end{verbatim}
+	
+	There are two main limitations to this approach.
+	First of all, the Jacobian requires a lot of memory to be stored.
+	For instance, if we consider an MLP with 3 hidden layers, 100 nodes in each layer and output size of 10, with biases at each layer; and we want to use it for an handwritten digit classification, for which the standard input images have $28 \times 28$ greyscale pixels, our network would have $99710 \approx 10^5$ parameters.
+	This, jointly with a $1000$ regression images, whould require a tensor of size $10^3 \times 10 \times 10^5$, thus with a billion entries.
+	Supposing we store each digit at 32 bit precision, the Jacobian would require approximately $3$GB of memory.
+	Then, another Jacobian would be necessary for predictio, thus doubling the memory required, if we suppose the test set to have equas size as the training one.
+	
+	Secondly, as a consequence of \verb|Pythorch| differentiation implementation, in order to retrieve the full Jacobian we need to iterate both on input images and on output dimensions.
+	This is due to the fact that differentiation always return a tensor of the same shape as the variable by which we differentiate and, thus, in case the derivative is a tensor of higher dimension, requires a direction over which aggregate the derivatives, which in this case would be a matrix with rows correspond to images and columns to output coordinates.
+	This double loop seriously affects computation time, as the very fast \verb|Pythorch| backend is accessed without any optimization through the \verb|python| loops, which are very slow as it is an interpreted language.
+	
+	\subsection{NTK at infinite width}\label{subsec:infinteImpl}
+	To estimate $\NTK_\infty$, i.e. the kernel corresponding to the ANN in the infinite width limit, we have different options.
+	The first one would be to find an explicit formula and exactly compute the kernel function, as Arora et al. did in \cite{arora2019exact}.
+	Altough explicit formulas are already known for MLPs and elementary CNNs, to compute them still requires to go through all layers, all input images and all output dimensions, which implies more and more computations the deeper the network  is.
+	Furthermore, every different architecture would explicitly require an explicit formula, which should be obtained beforehand.
+	
+	We can avoid the latter problem leveraging on the fact that in the IWL, if our conjecture is right, each layer of the network has a kernel, which converges to the theoretical limiting one.
+	We could thus use the already cited results, and iteratively compute an estimator of the kernel by passing through layers.
+	By using the fact that, asympthotically, the kernel for each node is independent from the others, at least for MLPs \cite{jacot2018neural}, we can average of them to get an estimate of the actual value.
+	Nonetheless, when considering more elaborate architectures, such as CNN or transformers, obtaining the NTK is not as straightforward.
+	
+	For this reason, we choose to follow the same approach as for the finite case.
+	More precisely, we initialize many big networks, compute the NTK for each of them and then estimate the limiting kernel as their average.
 	
 	\section{Experimental results}\label{sec:experiments}
+	
+	In this section we focus on testing experimentally our conjecture, namely that all the results presented in Section \ref{sec:nnAsGaussianPr} generalize to general Deep Learning architectures as well.
+	In particular, it has already been tested that for MLPs with a single output, regression based on NTK obtains results equivalent, or even better, than those of the original network.
+	On the other hand, the same does not holds for CNNs, where experimental results show that the actual network greatly outperform the kernel methods \cite{arora2019exact}.
+	Our objective is to understand what the network is actually learning, to confront it with what the $\NTK_\infty$ regression function, furthermore we study networks with multidimensional output.
+	
+	More precisely, given an ANN with random initialization, we can compute its actual $\NTK$, as exaplaned in Section \ref{subsec:finiteImpl}, and its theoretical-infinite-wide counterpart $NTK_\infty$.
+	Then, we train the ANN to get $f_{nn}$, which produces another tangent kernel $\NTK_{tr}$.
+	By \cite{jacot2018neural}, we know that $NTK_\infty$ does not change during training, so we can study the kernel regression functions $f_{\NTK_\infty}$ and $f_{\NTK_{tr}}$ given respectively by the infinte-width Tangent Kernel and the NTK obtained by the finite and trained Network.
+	
+	\subsection{The dataset}\label{subsec:dataset}
+	
+	We perform an handwritten-digit classification task, using the MNIST dataset \cite{lecun2010mnist}.
+	It consist in grayscale images of handwritten digits, whose size is 28x28 pixels, and their labels, which correspond to the 10 digits from 0 to 9.	
+	We use 1000 samples for train and we study the Kernel on a test of 1000 samples
+	The two sets are disjoint and randomly drawn from the full dataset, using \verb|Pytorch| functionalities.
+	
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=.75\linewidth]{../Simulations/figures/mnist_sample.png}
+		\caption{Sample of 8 images from the MNIST dataset.
+		The grayscale pictures represent, in the order, the digits 5, 0, 7, 1, 6, 9, 0, 7.}
+	\end{figure}
+	
+	We normalize the images beforehand, as the mean and standard deviation are well known, so that the observation space is supported in the unit sphere, which is one of the hypothesis used by Jacot et al. in \cite{jacot2018neural}.
+	
+	\subsection{Multilayer Perceptron}
+	
+	We start with the artificial neural network on which all theoretical results have been proved.
+	In particular, we test an architecture with three hidden layers and a readout layer.
+	The input dimension is of $784 = 28 \cdot 28$ nodes and all hidden layers have 100 nodes.
+	Combined with the readout layer, this gives a total of 99710 parameters.
+	
+	
 	
 	
 
@@ -365,6 +445,11 @@
 %			\centering
 %			\includegraphics[height=0.6\textwidth,width=0.75\textwidth]{example-image-a}
 %		\end{minipage}
+%		\begin{minipage}{0.5\textwidth}
+%			\centering
+%			\includegraphics[height=0.6\textwidth,width=0.75\textwidth]{example-image-a}
+%		\end{minipage}
+%		\begin{minipage}{0.5\textwidth}
 %		\begin{minipage}{0.5\textwidth}
 %			\centering
 %			\includegraphics[height=0.6\textwidth,width=0.75\textwidth]{example-image-a}
