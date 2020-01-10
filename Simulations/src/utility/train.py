@@ -35,8 +35,12 @@ def train(model, input_train, target_train, criterion, optimizer, nb_epochs=1000
 
         if plot_evolution:
             with torch.no_grad():
-                scorer = kwargs.get('score_evolution', criterion)
+                scorer = kwargs.get('scorer', criterion)
                 score_evolution.append(scorer(output, targets))
+
+    scorer = kwargs.get('scorer', criterion)
+    if scorer:
+        print("Train score :", scorer(output, targets))
     
     if plot_evolution:
         fig, ax = plt.subplots(figsize=(8,5), dpi=120)
