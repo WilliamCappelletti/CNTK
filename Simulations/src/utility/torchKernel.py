@@ -3,7 +3,7 @@ import time
 from tqdm.auto import tqdm
 
 class NeuralTangentKernel(torch.nn.Module):
-    def __init__(self, X, net, device=None, verbose=False):
+    def __init__(self, X, net, device=None, infinite=False, verbose=False):
         super(NeuralTangentKernel, self).__init__()
 
         if device is None:
@@ -95,7 +95,7 @@ class NeuralTangentKernel(torch.nn.Module):
         if self.training:
             kernel_te = self.kernel
         else:
-            Jac_te = self.compute_jacobians(input_test)
+            Jac_te = self.compute_jacobians(input_test, prog_bar=True)
             Jac_tr = self.Jac
             kernel_te = torch.einsum('abp, cdp -> abcd', Jac_te, Jac_tr).reshape(n_test * self.dim_out, self.n_samples * self.dim_out)
             kernel_te = kernel_te.to(self.device)

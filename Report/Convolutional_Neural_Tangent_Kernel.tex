@@ -417,7 +417,7 @@
 	
 	We perform an handwritten-digit classification task, using the MNIST dataset \cite{lecun2010mnist}.
 	It consist in grayscale images of handwritten digits, whose size is 28x28 pixels, and their labels, which correspond to the 10 digits from 0 to 9.	
-	We use 1000 samples for train and we study the Kernel on a test of 1000 samples
+	We use 500 samples for train and we study the Kernel on a test of 500 samples
 	The two sets are disjoint and randomly drawn from the full dataset, using \verb|Pytorch| functionalities.
 	
 	\begin{figure}[h!]
@@ -429,15 +429,47 @@
 	
 	We normalize the images beforehand, as the mean and standard deviation are well known, so that the observation space is supported in the unit sphere, which is one of the hypothesis used by Jacot et al. in \cite{jacot2018neural}.
 	
+	To train the ANNs and the coefficients for kernel regression we use the Cross entropy loss, which is the standard when performing a classification task.
+	To optimize the parameters we use \verb|Adam| optimizer \cite{kingma2014adam} over 8000 epochs.
+	
 	\subsection{Multilayer Perceptron}
 	
 	We start with the artificial neural network on which all theoretical results have been proved.
-	In particular, we test an architecture with three hidden layers and a readout layer.
-	The input dimension is of $784 = 28 \cdot 28$ nodes and all hidden layers have 100 nodes.
+	In particular, we test an architecture with three fully-connected hidden layers and a readout layer.
+	The input dimension is of $784 = 28 \cdot 28$ nodes and all hidden layers have the same number of nodes.
 	Combined with the readout layer, this gives a total of 99710 parameters.
 	
+	We proceed as explained beforehand.
+	We estimate the limiting NTK at initialization on a big network with 200 nodes.
+	Then we initialize an MLP with the same architecture but only 100 nodes and train it as explained beforehand.
+	Computing the tankent kernel of the latter gives us two different kernels $\NTK_\infty$ and $\NTK_{tr}$, whose first entries we illustrate in Figure \ref{fig:ntk_before_after_tr}.
+	\begin{figure}
+		\includegraphics[width=\linewidth]{../Simulations/figures/ntk_before_after_tr.png}
+		\caption{Neural Tangent Kernel of the MLP at initialization (Left) and after fully training the network (Right).
+		Both images represent values close to zero in dark purple, but they have different scales.
+	In fact, white values on the left are close to 24, while on the right they are close to 24000.
+    This shows that the kernel does indeed move during training in the finite case.}
+		\label{fig:ntk_before_after_tr}		
+	\end{figure}
+
+    We see that with 100 nodes the kernel still moves cosistently during training.
+    We then test if this change affects the performance of Kernel regression.
+    As we did with the ANN, we train the coefficients of the two kernel regressor, $f_{\NTK_\infty}$ and $f_{\NTK_{tr}}$.
+    Table \ref{tab:ntkScores} reports th results for the classification task.
+    We see that on training all regressors perfectly fit the data 
 	
-	
+	\begin{table}[h!]
+		\centering
+		\begin{tabular}{l|r|r}
+			 & Test accuracy & Train accuracy\\
+			 \hline
+			 MLP & 0.848 & 1.0 \\
+			 $\NTK_\infty$ & 0.744 & 1.0 \\
+			 $\NTK_{tr}$ & 0.81 & 1.0
+		\end{tabular}
+	\caption{Accuracy scores for the handwritten-digit recognition task. MLP is the fully trained multilayer perceptron, while $\NTK_\infty$ and $\NTK_{tr}$ refers to the two kernel regressors using the respective kernels.}
+	\label{tab:ntkScores}
+	\end{table}
 	
 
 %	\begin{figure}[h]
