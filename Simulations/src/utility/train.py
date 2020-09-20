@@ -7,6 +7,32 @@ import seaborn as sns
 sns.set()
 
 def train(model, input_train, target_train, criterion, optimizer, nb_epochs=1000, batch_size=None, device=None, **kwargs):
+    """Utility function to train a Pytorch module.
+    
+    Parameters
+    ----------
+    model : torch.nn.Module
+        model to train
+    input_train : Tensor
+        Design matrix
+    target_train : Tensor
+        Response
+    criterion : loss function
+        loss function to minimize
+    optimizer : torch.optim.*
+        Optimizer to use
+    nb_epochs : int, optional
+        Number of optimization steps, by default 1000
+    batch_size : int, optional
+        Number of observation in each batch, if None then a single batch with all elements is used. By default None
+    device : optional
+        device to use, by default None
+    
+    Returns
+    -------
+    torch.nn.Module
+        The trained model
+    """
 
     plot_evolution = kwargs.get('plot_evolution', None)
     score_evolution = []
